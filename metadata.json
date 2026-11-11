@@ -1,0 +1,6 @@
+{
+  "name": "Galaxy Tunnel",
+  "description": "High-speed secure V2Ray and Xray VPN client with custom protocol builder and advanced DNS routing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

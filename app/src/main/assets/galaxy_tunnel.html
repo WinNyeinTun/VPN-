@@ -1,0 +1,1755 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Galaxy Tunnel Client</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- jsQR Library for QR decoding from camera and gallery images -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            stone: {
+              450: '#8c8c85',
+              550: '#73736c',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap');
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :root {
+      --bg-primary: #f5f5f4;
+      --bg-secondary: #ffffff;
+      --text-primary: #1c1917;
+      --text-secondary: #57534e;
+      --border-color: #e7e5e4;
+      --card-bg: #ffffff;
+      --accent-color: #0c0a09;
+      --accent-hover: #292524;
+      --accent-text: #ffffff;
+    }
+
+    .dark {
+      --bg-primary: #0a0a09;
+      --bg-secondary: #161614;
+      --text-primary: #f5f5f4;
+      --text-secondary: #a8a29e;
+      --border-color: #272724;
+      --card-bg: #161614;
+      --accent-color: #ffffff;
+      --accent-hover: #e7e5e4;
+      --accent-text: #000000;
+    }
+
+    /* Splash Screen Styles */
+    #splash-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background-color: #0a0a09;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.5s ease, visibility 0.5s ease;
+    }
+
+    #splash-screen.fade-out {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      transition: background-color 0.3s ease, color 0.3s ease;
+      font-size: 16px;
+      user-select: none;
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #a8a29e;
+      border-radius: 4px;
+    }
+    .dark ::-webkit-scrollbar-thumb {
+      background: #44403c;
+    }
+
+    @keyframes pulse-ring {
+      0% { transform: scale(0.9); opacity: 0.9; }
+      100% { transform: scale(1.4); opacity: 0; }
+    }
+    .pulse-effect {
+      animation: pulse-ring 2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+    }
+
+    .nav-item.active-nav {
+      background-color: rgba(168, 162, 158, 0.1);
+      border-left: 3px solid #3b82f6;
+    }
+    .dark .nav-item.active-nav {
+      background-color: rgba(39, 39, 36, 0.5);
+    }
+
+    /* Subtle live edge beam for every server card */
+    @property --edge-angle {
+      syntax: '<angle>';
+      inherits: false;
+      initial-value: 0deg;
+    }
+
+    @keyframes edgeBeamOrbit {
+      to { --edge-angle: 360deg; }
+    }
+
+    .server-card-glow {
+      position: relative;
+      border-radius: 0.85rem;
+      padding: 2px;
+      isolation: isolate;
+      overflow: hidden;
+      --edge-angle: 0deg;
+      background: conic-gradient(
+        from var(--edge-angle),
+        transparent 0deg 238deg,
+        color-mix(in srgb, var(--glow-c1) 42%, transparent) 270deg,
+        color-mix(in srgb, var(--glow-c2) 68%, transparent) 315deg,
+        transparent 360deg
+      );
+      animation: edgeBeamOrbit 7s linear infinite;
+      box-shadow: 0 0 7px var(--glow-shadow);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .server-card-glow.active-card {
+      box-shadow: 0 0 11px var(--glow-shadow);
+      animation-duration: 5.5s;
+    }
+
+    .server-card-inner {
+      position: relative;
+      z-index: 1;
+      background-color: var(--bg-secondary);
+      border-radius: 0.75rem;
+      padding: 0.65rem 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .server-card-glow { animation-duration: 16s; }
+    }
+
+    /* Offline indicator banner */
+    #offline-banner {
+      position: fixed; left: 12px; right: 12px; bottom: 72px; z-index: 45;
+      display: flex; align-items: center; gap: 10px; padding: 11px 13px;
+      border: 1px solid rgba(251, 146, 60, .35); border-radius: 14px;
+      background: color-mix(in srgb, var(--bg-secondary) 94%, #f97316);
+      color: var(--text-primary); box-shadow: 0 8px 30px rgba(0,0,0,.18);
+      font-size: 11px; font-weight: 700;
+    }
+    #offline-banner.hidden { display: none; }
+    #offline-banner i { color: #f97316; }
+    @media (min-width: 640px) { #offline-banner { max-width: 560px; margin: 0 auto; } }
+    #qr-scan-modal.hidden { display: none; }
+    #qr-scan-modal:not(.hidden) { display: flex; }
+  </style>
+</head>
+<body class="min-h-screen pb-24">
+
+  <!-- OFFLINE BANNER NOTIFICATION -->
+  <div id="offline-banner" class="hidden" role="status" aria-live="polite">
+    <i class="fas fa-wifi-slash text-base"></i>
+    <span id="offline-banner-text" data-i18n="offlineBanner">Offline Mode — သိမ်းဆည်းထားသော Config များနှင့် ဆာဗာများကို သုံးနိုင်ပါသည်</span>
+    <button onclick="checkInternetConnection(true)" class="ml-auto text-blue-500 font-extrabold whitespace-nowrap active:scale-95" data-i18n="retryBtn">ပြန်လည်စစ်မည်</button>
+  </div>
+
+  <!-- SPLASH SCREEN -->
+  <div id="splash-screen">
+    <div class="flex flex-col items-center px-6 text-center">
+      <!-- Cosmic / Galaxy Animated Orbital Logo -->
+      <div class="relative flex items-center justify-center mb-6">
+        <div class="absolute w-28 h-28 rounded-full border-2 border-dashed border-blue-500/40 animate-spin" style="animation-duration: 8s;"></div>
+        <div class="absolute w-22 h-22 rounded-full border border-indigo-500/30 animate-pulse"></div>
+        <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-400 flex items-center justify-center shadow-lg shadow-blue-500/40">
+          <i class="fas fa-atom text-3xl text-white animate-spin" style="animation-duration: 12s;"></i>
+        </div>
+      </div>
+
+      <h2 class="text-2xl font-black tracking-wider text-white">GALAXY TUNNEL</h2>
+      <p class="text-[10px] text-blue-400 font-bold uppercase tracking-widest mt-1">High Speed Secure Core</p>
+
+      <!-- Animated Progress Bar -->
+      <div class="w-64 bg-stone-900 rounded-full h-2 mt-6 p-0.5 border border-stone-800 overflow-hidden shadow-inner">
+        <div id="splash-progress-bar" class="bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 h-full rounded-full transition-all duration-300 w-[20%]"></div>
+      </div>
+      <div class="flex items-center justify-between w-64 mt-2 text-[10px] font-mono text-stone-400">
+        <span id="splash-status-text" class="truncate font-bold">စတင်ပြင်ဆင်နေသည်...</span>
+        <span id="splash-percent" class="font-extrabold text-blue-400">20%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR NAVIGATION -->
+  <div id="sidebar" class="fixed top-0 -left-[280px] w-[280px] h-screen bg-[var(--bg-secondary)] border-r border-[var(--border-color)] transition-all duration-300 z-50 overflow-y-auto">
+    <div class="p-6 border-b border-[var(--border-color)] flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <i class="fas fa-atom text-2xl text-blue-500"></i>
+        <span class="font-extrabold text-xl tracking-tight" data-i18n="sidebarHeader">Galaxy Tunnel</span>
+      </div>
+      <button onclick="toggleSidebar()" class="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+        <i class="fas fa-times text-lg"></i>
+      </button>
+    </div>
+
+    <nav class="p-4 space-y-1">
+      <button onclick="switchPage('servers')" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-left transition-all" id="side-nav-servers">
+        <i class="fas fa-server text-base w-5 text-center text-blue-500"></i>
+        <span data-i18n="navServers">ဆာဗာများ</span>
+      </button>
+      <button onclick="switchPage('import')" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-left transition-all" id="side-nav-import">
+        <i class="fas fa-file-import text-base w-5 text-center text-emerald-500"></i>
+        <span data-i18n="navImport">Import Config</span>
+      </button>
+      <button onclick="switchPage('settings')" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-left transition-all" id="side-nav-settings">
+        <i class="fas fa-sliders text-base w-5 text-center text-amber-500"></i>
+        <span data-i18n="navSettings">Settings</span>
+      </button>
+      <button onclick="switchPage('contact')" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-left transition-all" id="side-nav-contact">
+        <i class="fas fa-address-book text-base w-5 text-center text-cyan-500"></i>
+        <span data-i18n="navContact">ဆက်သွယ်ရန်</span>
+      </button>
+    </nav>
+  </div>
+
+  <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-black/40 backdrop-blur-sm hidden z-40"></div>
+
+  <!-- HEADER BAR -->
+  <header class="sticky top-0 z-30 bg-[var(--bg-secondary)]/90 backdrop-blur-md border-b border-[var(--border-color)] px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <button onclick="toggleSidebar()" class="p-2 -ml-2 rounded-lg hover:bg-stone-100 dark:hover:bg-zinc-800 transition-colors">
+        <i class="fas fa-bars text-xl"></i>
+      </button>
+      <div class="flex items-center gap-2">
+        <i class="fas fa-atom text-xl text-blue-500"></i>
+        <span class="font-extrabold text-lg tracking-tight" data-i18n="headerTitle">Galaxy Tunnel</span>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-1 bg-stone-100 dark:bg-zinc-800 p-1 rounded-lg">
+      <button id="lang-my" onclick="setLanguage('my')" class="px-2.5 py-1 text-xs font-bold rounded-md transition-all">MY</button>
+      <button id="lang-en" onclick="setLanguage('en')" class="px-2.5 py-1 text-xs font-bold rounded-md transition-all">EN</button>
+    </div>
+  </header>
+
+  <main class="max-w-2xl mx-auto px-4 pt-4">
+
+    <!-- 1. SERVERS PAGE -->
+    <section id="page-servers" class="page-view block space-y-4">
+
+      <!-- VPN DASHBOARD HUD -->
+      <div class="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl p-5 flex flex-col items-center relative overflow-hidden shadow-sm">
+        <div class="text-[10px] uppercase font-extrabold tracking-widest text-stone-400 dark:text-stone-500 mb-4">VPN Connection</div>
+
+        <div class="relative flex items-center justify-center mb-4">
+          <div id="vpn-pulse" class="absolute w-32 h-32 rounded-full bg-emerald-500/10 dark:bg-emerald-400/5 hidden pulse-effect"></div>
+          <button id="vpn-power-btn" onclick="toggleVPN()" class="relative z-10 w-24 h-24 rounded-full bg-stone-100 dark:bg-zinc-800 border-4 border-stone-200 dark:border-zinc-700 flex flex-col items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95">
+            <i id="vpn-icon" class="fas fa-power-off text-2xl text-stone-400 dark:text-stone-500 transition-colors"></i>
+            <span id="vpn-status-text" class="text-[8px] font-black tracking-widest text-stone-400 dark:text-stone-500 mt-2">OFFLINE</span>
+          </button>
+        </div>
+
+        <div class="w-full text-center border-t border-[var(--border-color)] pt-3 space-y-0.5">
+          <div class="text-[8px] text-stone-400 dark:text-stone-500 uppercase font-bold tracking-wider" data-i18n="selectedServer">Selected Server</div>
+          <h4 id="hud-server-name" class="font-extrabold text-sm text-[var(--text-primary)]">SG-01 (VLESS)</h4>
+          <p id="hud-server-desc" class="text-[11px] text-stone-500 dark:text-stone-400">Singapore - High Speed</p>
+        </div>
+
+        <div id="vpn-telemetry" class="w-full grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-[var(--border-color)] hidden text-center">
+          <div>
+            <div class="text-[8px] text-stone-400 uppercase font-bold" data-i18n="duration">Duration</div>
+            <div id="telemetry-timer" class="font-mono font-bold text-[11px] mt-0.5">00:00:00</div>
+          </div>
+          <div>
+            <div class="text-[8px] text-emerald-500 uppercase font-bold">DL</div>
+            <div id="telemetry-dl" class="font-mono font-bold text-[11px] mt-0.5">0.0 KB/s</div>
+          </div>
+          <div>
+            <div class="text-[8px] text-indigo-500 uppercase font-bold">UL</div>
+            <div id="telemetry-ul" class="font-mono font-bold text-[11px] mt-0.5">0.0 KB/s</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MANUAL SERVER UPDATE -->
+      <div class="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl px-4 py-3 shadow-sm">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+            <i class="fas fa-cloud-arrow-down text-sm"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-xs font-extrabold">Server Update</div>
+            <div id="server-update-status" class="text-[9px] text-stone-400 truncate">Manual update only · No auto-connect</div>
+          </div>
+          <button id="server-update-btn" onclick="manualUpdateServers(event)" class="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-extrabold transition-all active:scale-95 shrink-0">
+            <i class="fas fa-rotate mr-1"></i><span>Update</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- COLLAPSIBLE SERVER LIST TOGGLE -->
+      <div class="flex items-center justify-between bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl px-4 py-3 cursor-pointer shadow-sm" onclick="toggleServerList()">
+        <div class="flex items-center gap-2">
+          <i class="fas fa-list-ul text-blue-500 text-sm"></i>
+          <span class="text-xs font-bold" data-i18n="selectServerLabel">Server List</span>
+        </div>
+        <i id="server-list-toggle-icon" class="fas fa-chevron-down text-stone-400 text-xs transition-transform"></i>
+      </div>
+
+      <div id="server-list-container" class="space-y-3">
+        <div class="flex gap-2">
+          <div class="relative flex-1">
+            <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 text-xs"></i>
+            <input type="text" id="server-search" oninput="filterServers()" placeholder="Search..." class="w-full pl-9 pr-4 py-2 rounded-xl text-xs bg-[var(--bg-secondary)] border border-[var(--border-color)] focus:outline-none">
+          </div>
+          <button onclick="loadServersFromURL(true)" class="px-3 py-2 rounded-xl bg-stone-100 dark:bg-zinc-800 text-xs font-bold transition-all">
+            <i class="fas fa-rotate"></i>
+          </button>
+        </div>
+
+        <div id="servers-list" class="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+           <!-- Dynamic server cards inject here -->
+        </div>
+      </div>
+
+    </section>
+
+    <!-- 2. IMPORT PAGE -->
+    <section id="page-import" class="page-view hidden space-y-5">
+      <div class="text-center space-y-1">
+        <h1 class="text-3xl font-black tracking-tight" data-i18n="importTitle">Import Config</h1>
+        <p class="text-xs font-medium text-stone-500 dark:text-stone-400" data-i18n="importSubtitle">Add your custom configurations</p>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <button onclick="startQrImport()" class="text-left p-4 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-color)] shadow-sm hover:border-blue-400 transition-all active:scale-[.98]">
+          <span class="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center"><i class="fas fa-qrcode text-lg"></i></span>
+          <span class="block mt-3 text-xs font-extrabold">Import from QR code</span>
+          <span class="block mt-1 text-[10px] leading-relaxed text-stone-400">Scan a configuration QR code</span>
+        </button>
+        <button onclick="importFromClipboard()" class="text-left p-4 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-color)] shadow-sm hover:border-emerald-400 transition-all active:scale-[.98]">
+          <span class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center"><i class="fas fa-clipboard text-lg"></i></span>
+          <span class="block mt-3 text-xs font-extrabold">Import from Clipboard</span>
+          <span class="block mt-1 text-[10px] leading-relaxed text-stone-400">Paste copied server links</span>
+        </button>
+        <button onclick="openLocalConfigPicker()" class="text-left p-4 rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-color)] shadow-sm hover:border-violet-400 transition-all active:scale-[.98]">
+          <span class="w-10 h-10 rounded-xl bg-violet-500/10 text-violet-500 flex items-center justify-center"><i class="fas fa-folder-open text-lg"></i></span>
+          <span class="block mt-3 text-xs font-extrabold">Import from local file</span>
+          <span class="block mt-1 text-[10px] leading-relaxed text-stone-400">Choose a text or URI list file</span>
+        </button>
+      </div>
+      <input id="local-config-file" type="file" accept=".txt,.uri,.conf,.json,text/plain,application/json" class="hidden" onchange="importLocalConfigFile(event)">
+
+      <div id="import-status" class="hidden rounded-xl border px-3 py-2 text-[10px] font-semibold" role="status" aria-live="polite"></div>
+
+      <div class="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl p-4 shadow-sm space-y-2">
+        <label for="import-config-input" class="block text-xs font-extrabold">Config URI(s)</label>
+        <p class="text-[10px] text-stone-400">Review or edit links here. Multiple links can be placed on separate lines.</p>
+        <textarea id="import-config-input" rows="3" class="w-full p-3 rounded-xl text-xs font-mono bg-stone-50 dark:bg-zinc-900 border border-[var(--border-color)] focus:outline-none focus:ring-1 focus:ring-blue-500/30" placeholder="vless://...&#10;vmess://..."></textarea>
+      </div>
+
+      <details id="custom-protocol-editor" class="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl shadow-sm overflow-hidden">
+        <summary class="cursor-pointer list-none p-4 flex items-center gap-3">
+          <span class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0"><i class="fas fa-sliders text-lg"></i></span>
+          <span class="flex-1 min-w-0">
+            <span class="block text-xs font-extrabold">Custom Protocol Builder</span>
+            <span class="block mt-1 text-[10px] text-stone-400">Create a link manually or edit a pasted URI</span>
+          </span>
+          <i class="fas fa-chevron-down text-[10px] text-stone-400"></i>
+        </summary>
+        <div class="border-t border-[var(--border-color)] p-4 space-y-4">
+          <div>
+            <div class="text-[9px] font-black uppercase tracking-wider text-stone-400 mb-2">Protocol</div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="editor-protocol-tabs">
+              <button type="button" data-editor-protocol="VLESS" onclick="selectEditorProtocol('VLESS')" class="editor-tab py-2.5 rounded-xl text-[10px] font-extrabold">VLESS</button>
+              <button type="button" data-editor-protocol="VMESS" onclick="selectEditorProtocol('VMESS')" class="editor-tab py-2.5 rounded-xl text-[10px] font-extrabold">VMess</button>
+              <button type="button" data-editor-protocol="TROJAN" onclick="selectEditorProtocol('TROJAN')" class="editor-tab py-2.5 rounded-xl text-[10px] font-extrabold">Trojan</button>
+              <button type="button" data-editor-protocol="SS" onclick="selectEditorProtocol('SS')" class="editor-tab py-2.5 rounded-xl text-[10px] font-extrabold">Shadowsocks</button>
+            </div>
+          </div>
+          <input type="hidden" id="editor-protocol" value="VLESS">
+          <div id="editor-transport-wrap" class="space-y-2">
+            <div class="text-[9px] font-black uppercase tracking-wider text-stone-400">Transport / Network</div>
+            <div id="editor-transport-tabs" class="grid grid-cols-4 gap-2"></div>
+            <input type="hidden" id="editor-transport" value="ws">
+          </div>
+          <div id="protocol-editor-fields" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <button onclick="loadConfigIntoEditor()" class="py-2.5 rounded-xl bg-stone-100 dark:bg-zinc-800 text-[10px] font-bold"><i class="fas fa-pen-to-square mr-1.5"></i>Edit URI in box</button>
+            <button onclick="buildConfigFromEditor()" class="py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold"><i class="fas fa-link mr-1.5"></i>Build URI</button>
+          </div>
+          <p class="text-[9px] leading-relaxed text-stone-400">Required fields depend on the protocol. Transport settings must match the server.</p>
+        </div>
+      </details>
+
+      <button onclick="saveImportedConfig()" class="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs transition-all flex items-center justify-center gap-2 shadow-sm">
+        <i class="fas fa-plus"></i><span>Save Config(s)</span>
+      </button>
+
+      <div class="space-y-3 pt-1">
+        <h3 class="text-[10px] font-black uppercase tracking-wider text-stone-400">Imported Configs</h3>
+        <div id="imported-configs-list" class="space-y-2"></div>
+      </div>
+    </section>
+
+    <!-- QR Scan Modal -->
+    <div id="qr-scan-modal" class="fixed inset-0 z-[100] hidden bg-black/75 backdrop-blur-sm p-4 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="qr-scan-title">
+      <div class="w-full max-w-sm rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-color)] p-4 shadow-2xl space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 id="qr-scan-title" class="text-sm font-extrabold">Scan QR code</h2>
+          <button onclick="stopQrScanner()" class="w-8 h-8 rounded-lg bg-stone-100 dark:bg-zinc-800 text-stone-500" aria-label="Close scanner"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="relative aspect-square rounded-xl overflow-hidden bg-black flex items-center justify-center">
+          <video id="qr-video" class="w-full h-full object-cover" autoplay playsinline muted></video>
+          <canvas id="qr-canvas" class="hidden"></canvas>
+          <div id="qr-camera-placeholder" class="absolute px-6 text-center text-[10px] text-white/80">Camera preview or QR image scanner will appear here.</div>
+        </div>
+        <p id="qr-scan-status" class="text-[10px] text-stone-500 text-center" aria-live="polite">Point the camera at a QR code, or select a photo from gallery.</p>
+        
+        <div class="space-y-2">
+          <button onclick="document.getElementById('qr-image-file').click()" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center justify-center gap-2 active:scale-95 transition-all">
+            <i class="fas fa-image"></i><span>Select QR Photo from Gallery</span>
+          </button>
+          <input id="qr-image-file" type="file" accept="image/*" class="hidden" onchange="scanQrFromImageFile(event)">
+          <button onclick="stopQrScanner()" class="w-full py-2.5 rounded-xl bg-stone-100 dark:bg-zinc-800 text-xs font-bold">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. SETTINGS PAGE -->
+    <section id="page-settings" class="page-view hidden space-y-6">
+      <div class="text-center space-y-1">
+        <h1 class="text-3xl font-black tracking-tight" data-i18n="settingsTitle">Settings</h1>
+        <p class="text-xs font-medium text-stone-500 dark:text-stone-400" data-i18n="settingsSubtitle">Customize your experience</p>
+      </div>
+
+      <div class="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl p-5 space-y-5 shadow-sm">
+
+        <!-- Connection Mode -->
+        <div class="space-y-3">
+            <label class="block text-[10px] font-bold text-stone-500 uppercase tracking-widest"><i class="fas fa-network-wired mr-2 text-indigo-500"></i>Connection Mode</label>
+            <div class="grid grid-cols-2 gap-2">
+                <button id="conn-mode-vpn-btn" onclick="setConnMode('VPN')" class="py-2.5 rounded-xl border font-bold text-xs transition-all flex items-center justify-center gap-2">
+                    <i class="fas fa-shield-alt text-emerald-500"></i> <span>VPN Mode</span>
+                </button>
+                <button id="conn-mode-proxy-btn" onclick="setConnMode('PROXY')" class="py-2.5 rounded-xl border font-bold text-xs transition-all flex items-center justify-center gap-2">
+                    <i class="fas fa-plug text-amber-500"></i> <span>Proxy Mode</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Bypass Mode (Routing Rules) -->
+        <div class="space-y-3 border-t border-[var(--border-color)] pt-5">
+            <label class="block text-[10px] font-bold text-stone-500 uppercase tracking-widest"><i class="fas fa-route mr-2 text-cyan-500"></i>Bypass Mode (Routing Rules)</label>
+            <select id="bypass-mode-select" onchange="saveAllCoreSettings()" class="w-full p-3 rounded-xl text-xs bg-stone-50 dark:bg-zinc-900 border border-[var(--border-color)] focus:outline-none">
+                <option value="GLOBAL">Full Tunnel (Route all traffic through VPN)</option>
+                <option value="LAN_CHINA">Bypass LAN & Mainland China</option>
+                <option value="LAN">Bypass LAN (Local IPs Direct)</option>
+            </select>
+        </div>
+
+        <!-- DoH and Direct DNS Settings -->
+        <div class="space-y-3 border-t border-[var(--border-color)] pt-5">
+            <label class="block text-[10px] font-bold text-stone-500 uppercase tracking-widest"><i class="fas fa-globe mr-2 text-blue-500"></i>DNS Settings (DoH & Direct DNS)</label>
+
+            <div>
+                <span class="text-[10px] font-bold text-stone-400">DNS Presets</span>
+                <select id="dns-preset-select" onchange="applyDnsPreset()" class="w-full mt-1 p-2.5 rounded-xl text-xs bg-stone-50 dark:bg-zinc-900 border border-[var(--border-color)] focus:outline-none font-bold">
+                    <option value="CUSTOM">Custom DNS Configuration</option>
+                    <option value="CLOUDFLARE">Cloudflare DoH</option>
+                    <option value="GOOGLE">Google DoH</option>
+                    <option value="QUAD9">Quad9 DoH</option>
+                    <option value="ADGUARD">AdGuard DoH</option>
+                    <option value="ALIDNS">AliDNS DoH</option>
+                </select>
+            </div>
+
+            <div class="space-y-2 pt-1">
+                <div>
+                    <label class="block text-[9px] font-extrabold text-stone-400">Remote DNS (DoH URL through VPN)</label>
+                    <input type="text" id="dns-input" value="https://cloudflare-dns.com/dns-query" onchange="saveDnsSetting()" class="w-full mt-1 p-2.5 rounded-xl text-xs bg-stone-50 dark:bg-zinc-900 border border-[var(--border-color)] focus:outline-none" placeholder="https://dns.google/dns-query">
+                </div>
+                <div>
+                    <label class="block text-[9px] font-extrabold text-stone-400">Direct / Bypass DNS (IP addresses only)</label>
+                    <input type="text" id="direct-dns-input" value="1.1.1.1, 1.0.0.1" onchange="saveDnsSetting()" class="w-full mt-1 p-2.5 rounded-xl text-xs bg-stone-50 dark:bg-zinc-900 border border-[var(--border-color)] focus:outline-none" placeholder="1.1.1.1, 1.0.0.1">
+                </div>
+            </div>
+            <p class="text-[9px] text-stone-400"><i class="fas fa-info-circle mr-1 text-blue-400"></i>Remote field accepts one DoH HTTPS URL. Direct / Bypass accepts comma-separated DNS IP addresses.</p>
+        </div>
+
+        <!-- Split Tunneling -->
+        <div class="space-y-3 border-t border-[var(--border-color)] pt-5">
+            <div class="flex items-center justify-between">
+                <label class="block text-[10px] font-bold text-stone-500 uppercase tracking-widest"><i class="fas fa-filter mr-2 text-emerald-500"></i>App Filter (Split Tunnel)</label>
+                <button onclick="openAppSelector()" class="text-[10px] font-bold text-blue-500 hover:underline">Select Apps</button>
+            </div>
+            <div id="selected-apps-count" class="text-[10px] text-stone-400">0 apps selected</div>
+        </div>
+
+        <!-- Core Advanced Settings -->
+        <div class="space-y-3 border-t border-[var(--border-color)] pt-5">
+            <label class="block text-[10px] font-bold text-stone-500 uppercase tracking-widest"><i class="fas fa-microchip mr-2 text-purple-500"></i>Core Settings</label>
+
+            <div class="space-y-3">
+                <!-- Domain Strategy -->
+                <div>
+                    <span class="text-[10px] font-semibold text-stone-400">Domain Strategy</span>
+                    <select id="domain-strategy-select" onchange="saveAllCoreSettings()" class="w-full mt-1 p-2.5 rounded-xl text-xs bg-stone-50 dark:bg-zinc-900 border border-[var(--border-color)] focus:outline-none">
+                        <option value="IPIfNonMatch">IPIfNonMatch (Default)</option>
+                        <option value="AsIs">AsIs (Battery Saver - Direct Domain)</option>
+                        <option value="IPOnDemand">IPOnDemand</option>
+                    </select>
+                </div>
+
+                <!-- Sniffing Toggle -->
+                <div class="flex items-center justify-between pt-1">
+                    <div>
+                        <div class="text-xs font-bold">Traffic Sniffing</div>
+                        <div class="text-[9px] text-stone-400">Sniff HTTP/TLS domain names</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="sniffing-toggle" onchange="saveAllCoreSettings()" class="sr-only peer" checked>
+                        <div class="w-9 h-5 bg-stone-300 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+
+                <!-- Mux Toggle -->
+                <div class="flex items-center justify-between pt-1">
+                    <div>
+                        <div class="text-xs font-bold">Mux (Multiplexing)</div>
+                        <div class="text-[9px] text-stone-400">Combines some connections; speed and compatibility depend on the server</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="mux-toggle" onchange="saveAllCoreSettings()" class="sr-only peer">
+                        <div class="w-9 h-5 bg-stone-300 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Theme selection -->
+        <div class="space-y-3 border-t border-[var(--border-color)] pt-5">
+          <label class="block text-[10px] font-bold text-stone-500 uppercase tracking-widest"><i class="fas fa-palette mr-2 text-amber-500"></i>Theme</label>
+          <div class="grid grid-cols-2 gap-3">
+            <button id="theme-light-btn" onclick="setTheme('light')" class="py-2.5 rounded-xl border font-bold text-xs transition-all flex items-center justify-center gap-2">
+              <i class="fas fa-sun text-amber-500"></i> <span>Light</span>
+            </button>
+            <button id="theme-dark-btn" onclick="setTheme('dark')" class="py-2.5 rounded-xl border font-bold text-xs transition-all flex items-center justify-center gap-2">
+              <i class="fas fa-moon text-indigo-400"></i> <span>Dark</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Font sizing -->
+        <div class="space-y-3 border-t border-[var(--border-color)] pt-5">
+          <label class="block text-[10px] font-bold text-stone-500 uppercase tracking-widest"><i class="fas fa-text-height mr-2 text-pink-500"></i>Text Size</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button id="font-sm-btn" onclick="setFontSize('small')" class="py-2.5 rounded-xl border font-bold text-xs">Small</button>
+            <button id="font-md-btn" onclick="setFontSize('medium')" class="py-2.5 rounded-xl border font-bold text-xs">Medium</button>
+            <button id="font-lg-btn" onclick="setFontSize('large')" class="py-2.5 rounded-xl border font-bold text-xs">Large</button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 4. CONTACT PAGE -->
+    <section id="page-contact" class="page-view hidden space-y-6">
+      <div class="text-center space-y-1">
+        <h1 class="text-3xl font-black tracking-tight" data-i18n="contactTitle">Contact Us</h1>
+        <p class="text-xs font-medium text-stone-500 dark:text-stone-400" data-i18n="contactSubtitle">Reach us via Telegram</p>
+      </div>
+
+      <div class="space-y-3">
+        <a href="https://t.me/Swnt7771" target="_blank" class="flex items-center gap-4 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl p-4 shadow-sm hover:scale-[1.01] transition-all">
+          <div class="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-950/30 flex items-center justify-center text-sky-500"><i class="fab fa-telegram-plane text-lg"></i></div>
+          <div class="flex-1"><span class="text-[8px] font-black text-stone-400 uppercase">Telegram</span><div class="font-extrabold text-sm">@Swnt7771</div></div>
+        </a>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- APP SELECTOR MODAL -->
+  <div id="app-selector-modal" class="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-[var(--bg-secondary)] w-full max-w-md rounded-2xl flex flex-col max-h-[80vh] overflow-hidden shadow-2xl">
+        <div class="p-4 border-b border-[var(--border-color)] flex items-center justify-between">
+            <h3 class="font-black text-sm">Select Apps</h3>
+            <button onclick="closeAppSelector()" class="text-stone-400 hover:text-stone-600"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="p-4 border-b border-[var(--border-color)]">
+            <input type="text" id="app-search" oninput="filterApps()" placeholder="Search apps..." class="w-full px-4 py-2 rounded-xl text-xs bg-stone-50 dark:bg-zinc-900 border border-[var(--border-color)] focus:outline-none">
+        </div>
+        <div id="apps-list" class="flex-1 overflow-y-auto p-2 space-y-1">
+            <!-- Apps will load here -->
+        </div>
+        <div class="p-4 border-t border-[var(--border-color)] flex gap-2">
+            <button onclick="saveSelectedApps()" class="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold text-xs">Save Selection</button>
+        </div>
+    </div>
+  </div>
+
+  <footer class="fixed bottom-0 left-0 right-0 z-30 bg-[var(--bg-secondary)]/95 backdrop-blur-md border-t border-[var(--border-color)] py-2 px-2 flex justify-around max-w-2xl mx-auto rounded-t-2xl shadow-xl">
+    <button onclick="switchPage('servers')" class="footer-nav-item flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all" id="foot-nav-servers">
+      <i class="fas fa-server text-base"></i>
+      <span class="text-[8px] font-bold" data-i18n="navServers">Servers</span>
+    </button>
+    <button onclick="switchPage('import')" class="footer-nav-item flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all" id="foot-nav-import">
+      <i class="fas fa-file-import text-base"></i>
+      <span class="text-[8px] font-bold" data-i18n="navImport">Import</span>
+    </button>
+    <button onclick="switchPage('settings')" class="footer-nav-item flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all" id="foot-nav-settings">
+      <i class="fas fa-sliders text-base"></i>
+      <span class="text-[8px] font-bold" data-i18n="navSettings">Settings</span>
+    </button>
+    <button onclick="switchPage('contact')" class="footer-nav-item flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all" id="foot-nav-contact">
+      <i class="fas fa-address-book text-base"></i>
+      <span class="text-[8px] font-bold" data-i18n="navContact">Contact</span>
+    </button>
+  </footer>
+
+  <script>
+    const i18n = {
+      my: {
+        sidebarHeader: "Galaxy Tunnel",
+        navServers: "ဆာဗာများ", navImport: "Import Config", navSettings: "Settings", navContact: "ဆက်သွယ်ရန်",
+        headerTitle: "Galaxy Tunnel", selectedServer: "ရွေးချယ်ထားသော ဆာဗာ", duration: "အသုံးပြုချိန်",
+        importTitle: "Import Config", importSubtitle: "သင်၏ v2ray config များကို ထည့်သွင်းပါ",
+        settingsTitle: "Settings", settingsSubtitle: "စိတ်ကြိုက် ပြင်ဆင်ရန်",
+        selectServerLabel: "ဆာဗာစာရင်း", pasteBtn: "Clipboard မှကူးယူပါ", saveBtn: "သိမ်းဆည်းမည်",
+        contactTitle: "ဆက်သွယ်ရန်", contactSubtitle: "Telegram မှ ဆက်သွယ်ပါ",
+        offlineBanner: "Offline Mode — သိမ်းဆည်းထားသော Config များနှင့် ဆာဗာများကို သုံးနိုင်ပါသည်",
+        retryBtn: "ပြန်လည်စစ်မည်"
+      },
+      en: {
+        sidebarHeader: "Galaxy Tunnel",
+        navServers: "Servers", navImport: "Import Config", navSettings: "Settings", navContact: "Contact Us",
+        headerTitle: "Galaxy Tunnel", selectedServer: "Selected Server", duration: "Duration",
+        importTitle: "Import Config", importSubtitle: "Add your custom configurations",
+        settingsTitle: "Settings", settingsSubtitle: "Customize your experience",
+        selectServerLabel: "Server List", pasteBtn: "Paste from Clipboard", saveBtn: "Save Configuration",
+        contactTitle: "Contact Us", contactSubtitle: "Reach us via Telegram",
+        offlineBanner: "Offline mode — saved configs and cached servers are available.",
+        retryBtn: "Retry"
+      }
+    };
+
+    const STATIC_MY_TRANSLATIONS = {
+      "Initializing...": "စတင်ပြင်ဆင်နေသည်...",
+      "Synchronizing Servers...": "ဆာဗာများကို ချိတ်ဆက်ရယူနေသည်...",
+      "VPN Connection": "VPN ချိတ်ဆက်မှု",
+      "OFFLINE": "ချိတ်ဆက်ထားခြင်းမရှိ",
+      "Selected Server": "ရွေးချယ်ထားသော ဆာဗာ",
+      "Server Update": "ဆာဗာ အပ်ဒိတ်",
+      "Manual update only · No auto-connect": "ကိုယ်တိုင် အပ်ဒိတ်သာ · အလိုအလျောက် မချိတ်ပါ",
+      "Update": "အပ်ဒိတ်",
+      "Updating...": "အပ်ဒိတ်လုပ်နေသည်...",
+      "Fetching latest servers from GitHub...": "GitHub မှ ဆာဗာအသစ်များ ရယူနေသည်...",
+      "Server List": "ဆာဗာစာရင်း",
+      "Search...": "ရှာဖွေရန်...",
+      "Import Config": "Config ထည့်သွင်းရန်",
+      "Paste from Clipboard": "Clipboard မှ ကူးယူရန်",
+      "Save Configuration": "Config သိမ်းဆည်းရန်",
+      "Imported Configs": "ထည့်သွင်းထားသော Config များ",
+      "Connection Mode": "ချိတ်ဆက်မှုပုံစံ",
+      "VPN Mode": "VPN ပုံစံ",
+      "Proxy Mode": "Proxy ပုံစံ",
+      "Bypass Mode (Routing Rules)": "Bypass ပုံစံ (လမ်းကြောင်းစည်းမျဉ်းများ)",
+      "Full Tunnel (Route all traffic through VPN)": "Full Tunnel (Traffic အားလုံးကို VPN မှတစ်ဆင့် ပို့ရန်)",
+      "Bypass LAN & Mainland China": "LAN နှင့် Mainland China ကို ကျော်ရန်",
+      "Bypass LAN (Local IPs Direct)": "LAN ကို ကျော်ရန် (Local IP များ Direct)",
+      "DNS Setting": "DNS ဆက်တင်",
+      "DNS Settings (DoH & Direct DNS)": "DNS ဆက်တင် (DoH နှင့် Direct DNS)",
+      "DNS Presets": "DNS အဆင်သင့်ရွေးချယ်မှုများ",
+      "Custom DNS Configuration": "စိတ်ကြိုက် DNS ပြင်ဆင်မှု",
+      "Cloudflare DoH": "Cloudflare DoH",
+      "Google DoH": "Google DoH",
+      "Quad9 DoH": "Quad9 DoH",
+      "AdGuard DoH": "AdGuard DoH",
+      "AliDNS DoH": "AliDNS DoH",
+      "Remote DNS (DoH URL through VPN)": "Remote DNS (VPN မှတစ်ဆင့် DoH URL)",
+      "Direct / Bypass DNS (IP addresses only)": "Direct / Bypass DNS (IP လိပ်စာများသာ)",
+      "App Filter (Split Tunnel)": "App Filter (Split Tunnel)",
+      "Select Apps": "App များ ရွေးချယ်ရန်",
+      "Core Settings": "Core ဆက်တင်များ",
+      "Domain Strategy": "Domain Strategy",
+      "IPIfNonMatch (Default)": "IPIfNonMatch (မူလ)",
+      "AsIs (Battery Saver - Direct Domain)": "AsIs (Battery ချွေတာရန် - Direct Domain)",
+      "Traffic Sniffing": "Traffic စစ်ဆေးခြင်း",
+      "Sniff HTTP/TLS domain names": "HTTP/TLS domain name များကို စစ်ဆေးရန်",
+      "Mux (Multiplexing)": "Mux (Multiplexing)",
+      "Theme": "အပြင်အဆင်",
+      "Light": "အလင်း",
+      "Dark": "အမှောင်",
+      "Text Size": "စာလုံးအရွယ်အစား",
+      "Small": "သေး",
+      "Medium": "အလယ်",
+      "Large": "ကြီး",
+      "Contact Us": "ဆက်သွယ်ရန်",
+      "Reach us via Telegram": "Telegram မှ ဆက်သွယ်ရန်",
+      "Save Selection": "ရွေးချယ်မှု သိမ်းဆည်းရန်",
+      "Search apps...": "App များ ရှာဖွေရန်...",
+      "ACTIVE": "အသုံးပြုနေသည်",
+      "CHECKING": "စစ်ဆေးနေသည်",
+      "ONLINE": "အွန်လိုင်း",
+      "SLOW": "နှေးနေသည်",
+      "OFFLINE": "အော့ဖ်လိုင်း",
+      "NOT CHECKED": "မစစ်ဆေးရသေး",
+      "Save Config(s)": "Config များ သိမ်းဆည်းရန်"
+    };
+
+    function uiText(en, my) {
+      return currentLanguage === 'my' ? (my || STATIC_MY_TRANSLATIONS[en] || en) : en;
+    }
+
+    function applyStaticLanguage() {
+      const elements = document.querySelectorAll('body *');
+      elements.forEach(el => {
+        if (el.hasAttribute('data-i18n')) return;
+        if (el.children.length === 0) {
+          const original = el.dataset.enText || el.textContent.trim();
+          if (!original) return;
+          el.dataset.enText = original;
+          const translated = currentLanguage === 'my' ? STATIC_MY_TRANSLATIONS[original] : original;
+          if (translated) el.textContent = translated;
+        }
+      });
+      const placeholders = {
+        '#server-search': ['Search...', 'ရှာဖွေရန်...'],
+        '#app-search': ['Search apps...', 'App များ ရှာဖွေရန်...']
+      };
+      Object.entries(placeholders).forEach(([selector, values]) => {
+        const input = document.querySelector(selector);
+        if (input) input.placeholder = currentLanguage === 'my' ? values[1] : values[0];
+      });
+      if (typeof renderServersList === 'function' && servers.length) renderServersList();
+      if (typeof renderImportedConfigsList === 'function') renderImportedConfigsList();
+    }
+
+    const DEFAULT_SERVERS = [
+      { id: 'def-1', name: "SG-01 (VLESS Cloudflare)", description: "Singapore High Speed", location: "Singapore", protocol: "VLESS", config: "vless://b831381d-6324-4d53-ad4f-8cda48b30811@sg01.galaxytunnel.xyz:443?type=ws&security=tls&path=%2Fgalaxy#SG-01%20(VLESS)", ping: 45, health: 'online' },
+      { id: 'def-2', name: "JP-02 (Trojan Fast)", description: "Tokyo Tokyo Core", location: "Japan", protocol: "Trojan", config: "trojan://password123@jp02.galaxytunnel.xyz:443?type=ws&security=tls&path=%2Ftrojan#JP-02%20(Trojan)", ping: 68, health: 'online' },
+      { id: 'def-3', name: "US-01 (VMess Reality)", description: "Los Angeles Node", location: "United States", protocol: "VMESS", config: "vmess://eyJhZGQiOiJ1czAxLmdhbGF4eXR1bm5lbC54eXoiLCJhaWQiOiIwIiwiaG9zdCI6IiIsImlkIjoiZjNmZTljMjQtZWM2Mi00OTk0LTgyYzctODgyZjIxMTk0MWY4IiwibmV0Ijoid3MiLCJwYXRoIjoiL3ZtZXNzIiwicHMiOiJVUy0wMSAoVk1lc3MpIiwicG9ydCI6IjQ0MyIsInRscyI6InRscyIsInYiOiIyIn0=", ping: 180, health: 'online' }
+    ];
+
+    let currentLanguage = localStorage.getItem('galaxy_lang') || 'my';
+    let currentTheme = localStorage.getItem('galaxy_theme') || 'dark';
+    let currentFontSize = localStorage.getItem('galaxy_font') || 'medium';
+    let lastSelectedConfig = localStorage.getItem('galaxy_selected_config') || DEFAULT_SERVERS[0].config;
+    let servers = [];
+    let activeServerIndex = 0;
+    let importedConfigs = JSON.parse(localStorage.getItem('galaxy_imports') || '[]');
+    let allApps = [];
+    let selectedApps = JSON.parse(localStorage.getItem('galaxy_selected_apps') || '[]');
+
+    let vpnConnected = false;
+    let vpnTimer = null;
+    let vpnSeconds = 0;
+
+    function updateSplashProgress(percent, textMy, textEn) {
+      const bar = document.getElementById('splash-progress-bar');
+      const textEl = document.getElementById('splash-status-text');
+      const percentEl = document.getElementById('splash-percent');
+      if (bar) bar.style.width = `${percent}%`;
+      if (percentEl) percentEl.textContent = `${percent}%`;
+      if (textEl) textEl.textContent = currentLanguage === 'my' ? textMy : textEn;
+    }
+
+    function dismissSplashScreen() {
+      updateSplashProgress(100, "အဆင်သင့်ဖြစ်ပါပြီ", "Ready!");
+      setTimeout(() => {
+        const splash = document.getElementById('splash-screen');
+        if (splash) splash.classList.add('fade-out');
+      }, 350);
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && typeof Android !== 'undefined' && Android.syncState) {
+        Android.syncState();
+      }
+    });
+
+    window.addEventListener('focus', () => {
+      if (typeof Android !== 'undefined' && Android.syncState) {
+        Android.syncState();
+      }
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      try {
+        setLanguage(currentLanguage);
+        setTheme(currentTheme);
+        setFontSize(currentFontSize);
+      } catch (e) {}
+
+      updateSplashProgress(25, "စတင်ပြင်ဆင်နေသည်...", "Initializing...");
+      setupNetworkStatus();
+      selectEditorProtocol('VLESS');
+      loadDnsSettings();
+      loadCoreSettings();
+
+      try {
+        renderImportedConfigsList();
+      } catch (e) {}
+
+      // Initial servers load
+      servers = [...DEFAULT_SERVERS, ...importedConfigs];
+      renderServersList();
+      updateSelectedServerHUD();
+
+      // Sync state from native Android if available
+      if (typeof Android !== 'undefined' && Android.syncState) {
+        Android.syncState();
+      }
+
+      // Safety timeout so splash screen NEVER blocks UI longer than 1.5s
+      const safetyTimer = setTimeout(() => {
+        dismissSplashScreen();
+      }, 1500);
+
+      // Non-blocking background server sync from GitHub repository
+      loadServersFromURL().then(() => {
+        clearTimeout(safetyTimer);
+        dismissSplashScreen();
+      }).catch(() => {
+        clearTimeout(safetyTimer);
+        dismissSplashScreen();
+      });
+    });
+
+    function setTheme(theme) {
+      currentTheme = theme;
+      localStorage.setItem('galaxy_theme', theme);
+      const lightBtn = document.getElementById('theme-light-btn');
+      const darkBtn = document.getElementById('theme-dark-btn');
+      if (lightBtn) lightBtn.className = "py-2.5 rounded-xl border font-bold text-xs transition-all flex items-center justify-center gap-2 " + (theme === 'light' ? 'border-amber-500 bg-amber-500/10 text-amber-600' : 'border-[var(--border-color)]');
+      if (darkBtn) darkBtn.className = "py-2.5 rounded-xl border font-bold text-xs transition-all flex items-center justify-center gap-2 " + (theme === 'dark' ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400' : 'border-[var(--border-color)]');
+      if (theme === 'dark') document.documentElement.classList.add('dark');
+      else document.documentElement.classList.remove('dark');
+    }
+
+    function setFontSize(size) {
+      currentFontSize = size;
+      localStorage.setItem('galaxy_font', size);
+      const btns = {small: 'font-sm-btn', medium: 'font-md-btn', large: 'font-lg-btn'};
+      Object.keys(btns).forEach(k => {
+          const btn = document.getElementById(btns[k]);
+          if(btn) btn.className = "py-2.5 rounded-xl border font-bold text-xs transition-all " + (size === k ? 'border-blue-500 bg-blue-500/10 text-blue-500' : 'border-[var(--border-color)]');
+      });
+      const sizes = {small: '14px', medium: '16px', large: '18px'};
+      document.documentElement.style.fontSize = sizes[size] || '16px';
+    }
+
+    function setLanguage(lang) {
+      currentLanguage = lang;
+      localStorage.setItem('galaxy_lang', lang);
+      const myBtn = document.getElementById('lang-my');
+      const enBtn = document.getElementById('lang-en');
+      if (myBtn) myBtn.className = "px-2.5 py-1 text-xs font-bold rounded-md transition-all " + (lang === 'my' ? 'bg-white dark:bg-zinc-900 shadow-sm text-stone-900 dark:text-white' : 'text-stone-500');
+      if (enBtn) enBtn.className = "px-2.5 py-1 text-xs font-bold rounded-md transition-all " + (lang === 'en' ? 'bg-white dark:bg-zinc-900 shadow-sm text-stone-900 dark:text-white' : 'text-stone-500');
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (i18n[lang][key]) el.textContent = i18n[lang][key];
+      });
+      applyStaticLanguage();
+    }
+
+    function switchPage(pageId) {
+      document.querySelectorAll('.page-view').forEach(p => p.classList.add('hidden'));
+      const targetPage = document.getElementById(`page-${pageId}`);
+      if (targetPage) targetPage.classList.remove('hidden');
+      document.querySelectorAll('.footer-nav-item').forEach(btn => btn.classList.remove('text-blue-500', 'text-stone-400'));
+      document.querySelectorAll('.footer-nav-item').forEach(btn => btn.classList.add('text-stone-400'));
+      const activeFootBtn = document.getElementById(`foot-nav-${pageId}`);
+      if (activeFootBtn) { activeFootBtn.classList.remove('text-stone-400'); activeFootBtn.classList.add('text-blue-500'); }
+      document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active-nav', 'text-[var(--text-primary)]'));
+      const activeSideBtn = document.getElementById(`side-nav-${pageId}`);
+      if (activeSideBtn) activeSideBtn.classList.add('active-nav', 'text-[var(--text-primary)]');
+      const sidebar = document.getElementById('sidebar');
+      if (sidebar && sidebar.style.left === '0px') toggleSidebar();
+    }
+
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebar-overlay');
+      if (!sidebar || !overlay) return;
+      if (sidebar.style.left === '0px') { sidebar.style.left = '-280px'; overlay.classList.add('hidden'); }
+      else { sidebar.style.left = '0px'; overlay.classList.remove('hidden'); }
+    }
+
+    function toggleServerList() {
+        const container = document.getElementById('server-list-container');
+        const icon = document.getElementById('server-list-toggle-icon');
+        if (!container || !icon) return;
+        if (container.classList.contains('hidden')) {
+            container.classList.remove('hidden');
+            icon.classList.add('rotate-180');
+        } else {
+            container.classList.add('hidden');
+            icon.classList.remove('rotate-180');
+        }
+    }
+
+    function setupNetworkStatus() {
+      const update = () => {
+        const offline = !navigator.onLine;
+        const banner = document.getElementById('offline-banner');
+        if (banner) banner.classList.toggle('hidden', !offline);
+        if (offline) {
+          const msg = currentLanguage === 'my'
+            ? 'Offline Mode — သိမ်းဆည်းထားသော ဆာဗာများကို သုံးနေသည်'
+            : 'Offline mode — using saved servers';
+          setServerUpdateState(msg, 'error');
+        }
+      };
+      window.addEventListener('online', () => {
+        update();
+        const msg = currentLanguage === 'my' ? 'အင်တာနက် ပြန်လည် ရရှိပါပြီ' : 'Internet restored';
+        setServerUpdateState(msg, 'success');
+      });
+      window.addEventListener('offline', update);
+      update();
+    }
+
+    async function checkInternetConnection(showMessage = false) {
+      try {
+        const c = new AbortController();
+        const timer = setTimeout(() => c.abort(), 3500);
+        await fetch('https://clients3.google.com/generate_204?t=' + Date.now(), { mode: 'no-cors', cache: 'no-store', signal: c.signal });
+        clearTimeout(timer);
+        if (showMessage) {
+          const msg = currentLanguage === 'my' ? 'အင်တာနက် ချိတ်ဆက်မှု အဆင်ပြေပါသည်' : 'Internet is available';
+          setServerUpdateState(msg, 'success');
+        }
+        const b = document.getElementById('offline-banner'); if (b) b.classList.add('hidden');
+        return true;
+      } catch (_) {
+        const b = document.getElementById('offline-banner'); if (b) b.classList.remove('hidden');
+        if (showMessage) {
+          const msg = currentLanguage === 'my' ? 'အင်တာနက် မရပါ · သိမ်းထားသော ဆာဗာများကို ဆက်သုံးနေသည်' : 'Internet unavailable · using saved configs';
+          setServerUpdateState(msg, 'error');
+        }
+        return false;
+      }
+    }
+
+    // PROTOCOL / TRANSPORT CONFIG EDITOR
+    const editorTransports = ['ws','tcp','grpc','xhttp','httpupgrade','h2','kcp'];
+    let editorProtocol = 'VLESS';
+    let editorTransport = 'ws';
+
+    function selectEditorProtocol(protocol, values = {}) {
+      editorProtocol = protocol;
+      const input = document.getElementById('editor-protocol'); if (input) input.value = protocol;
+      document.querySelectorAll('[data-editor-protocol]').forEach(btn => {
+        const active = btn.dataset.editorProtocol === protocol;
+        btn.className = `editor-tab py-2.5 rounded-xl text-[10px] font-extrabold transition-all active:scale-[.98] ${active ? 'bg-blue-600 text-white shadow-sm' : 'bg-stone-100 dark:bg-zinc-800 text-stone-500'}`;
+      });
+      const wrap = document.getElementById('editor-transport-wrap');
+      if (wrap) wrap.classList.toggle('hidden', protocol === 'SS');
+      renderTransportTabs(values.transport || editorTransport);
+      renderProtocolEditor(values);
+    }
+
+    function renderTransportTabs(selected = 'ws') {
+      editorTransport = selected || 'ws';
+      const input = document.getElementById('editor-transport'); if (input) input.value = editorTransport;
+      const box = document.getElementById('editor-transport-tabs'); if (!box) return;
+      box.innerHTML = editorTransports.map(t => `<button type="button" onclick="selectEditorTransport('${t}')" class="py-2.5 rounded-xl text-[9px] font-extrabold transition-all active:scale-[.98] ${t === editorTransport ? 'bg-emerald-600 text-white shadow-sm' : 'bg-stone-100 dark:bg-zinc-800 text-stone-500'}">${t.toUpperCase()}</button>`).join('');
+    }
+
+    function selectEditorTransport(transport) {
+      editorTransport = transport;
+      renderTransportTabs(transport);
+      renderProtocolEditor();
+    }
+
+    function editorField(key, label, value = '', full = false, type = 'text') {
+      return `<label class="block min-w-0 text-[10px] font-semibold text-stone-500 ${full ? 'col-span-2' : ''}">${label}<input type="${type}" data-editor-key="${key}" value="${escapeHtml(value)}" class="w-full mt-1.5 p-2.5 rounded-xl text-[11px] text-[var(--text-primary)] bg-stone-50 dark:bg-zinc-900 border border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-blue-500/20" /></label>`;
+    }
+    function editorSelect(key, label, options, value = '', full = false) {
+      return `<label class="block min-w-0 text-[10px] font-semibold text-stone-500 ${full ? 'col-span-2' : ''}">${label}<select data-editor-key="${key}" class="w-full mt-1.5 p-2.5 rounded-xl text-[11px] text-[var(--text-primary)] bg-stone-50 dark:bg-zinc-900 border border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-blue-500/20">${options.map(o => `<option value="${o[0]}" ${o[0] === value ? 'selected' : ''}>${o[1]}</option>`).join('')}</select></label>`;
+    }
+    function renderProtocolEditor(values = {}) {
+      const p = editorProtocol;
+      const t = values.transport || editorTransport;
+      const box = document.getElementById('protocol-editor-fields'); if (!box) return;
+      let html = editorField('remarks', 'Remarks / Name', values.remarks || `Galaxy-${p}`, true);
+      if (p === 'SS') {
+        html += editorField('address', 'Address', values.address || '');
+        html += editorField('port', 'Port', values.port || '443', false, 'number');
+        html += editorField('method', 'Encryption method', values.method || 'aes-128-gcm');
+        html += editorField('password', 'Password', values.password || '', false, 'password');
+      } else {
+        html += editorField('address', 'Address', values.address || '', true);
+        html += editorField('port', 'Port', values.port || '443', false, 'number');
+        html += editorField(p === 'TROJAN' ? 'password' : 'uuid', p === 'TROJAN' ? 'Password' : 'ID / UUID', values[p === 'TROJAN' ? 'password' : 'uuid'] || '', false, p === 'TROJAN' ? 'password' : 'text');
+        if (p === 'VLESS') html += editorSelect('flow', 'Flow', [['','none'],['xtls-rprx-vision','xtls-rprx-vision']], values.flow || '');
+        html += editorSelect('security', 'Security', [['none','none'],['tls','TLS'],['reality','Reality']], values.security || (t === 'ws' ? 'tls' : 'none'));
+        html += editorField('sni', 'SNI / Server Name', values.sni || '', true);
+        html += editorSelect('fingerprint', 'Fingerprint', [['chrome','Chrome'],['firefox','Firefox'],['safari','Safari'],['edge','Edge'],['','None']], values.fingerprint || 'chrome');
+        if (t === 'ws') { html += editorField('host', 'WS Host', values.host || '', true); html += editorField('path', 'WS Path', values.path || '/', true); }
+        if (t === 'grpc') html += editorField('serviceName', 'gRPC Service Name', values.serviceName || '', true);
+      }
+      box.innerHTML = html;
+      renderTransportTabs(t);
+    }
+    function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function editorValues() { const v = {}; document.querySelectorAll('[data-editor-key]').forEach(i => v[i.dataset.editorKey] = i.value.trim()); return v; }
+    function addTransportParams(q, v, t) {
+      q.set('type', t);
+      if (v.security && v.security !== 'none') q.set('security', v.security);
+      if (v.sni) q.set('sni', v.sni);
+      if (v.fingerprint) q.set('fp', v.fingerprint);
+      if (t === 'ws') { if (v.host) q.set('host', v.host); if (v.path) q.set('path', v.path); }
+      if (t === 'grpc' && v.serviceName) q.set('serviceName', v.serviceName);
+    }
+    function buildConfigFromEditor() {
+      const p = editorProtocol, t = editorTransport, v = editorValues();
+      if (!v.address || !v.port) return alert('Address နဲ့ Port ဖြည့်ပါ။');
+      let out = '';
+      if (p === 'VLESS') { if (!v.uuid) return alert('UUID ဖြည့်ပါ။'); const q = new URLSearchParams({encryption:'none'}); addTransportParams(q, v, t); if (v.flow) q.set('flow', v.flow); out = `vless://${encodeURIComponent(v.uuid)}@${v.address}:${v.port}?${q}#${encodeURIComponent(v.remarks || 'Galaxy-VLESS')}`; }
+      if (p === 'TROJAN') { if (!v.password) return alert('Password ဖြည့်ပါ။'); const q = new URLSearchParams(); addTransportParams(q, v, t); out = `trojan://${encodeURIComponent(v.password)}@${v.address}:${v.port}?${q}#${encodeURIComponent(v.remarks || 'Galaxy-Trojan')}`; }
+      if (p === 'VMESS') { if (!v.uuid) return alert('UUID ဖြည့်ပါ။'); const obj={v:'2',ps:v.remarks||'Galaxy-VMess',add:v.address,port:String(v.port),id:v.uuid,aid:'0',scy:'auto',net:t,path:v.path||'/',host:v.host||'',tls:v.security==='tls'?'tls':'',sni:v.sni||'',fp:v.fingerprint||''}; if(t==='grpc') obj.path=v.serviceName||''; out='vmess://'+btoa(JSON.stringify(obj)); }
+      if (p === 'SS') { if (!v.method || !v.password) return alert('Method နဲ့ Password ဖြည့်ပါ။'); out=`ss://${btoa(`${v.method}:${v.password}`)}@${v.address}:${v.port}#${encodeURIComponent(v.remarks || 'Galaxy-SS')}`; }
+      const input = document.getElementById('import-config-input');
+      if (input) input.value = out;
+    }
+    function loadConfigIntoEditor() {
+      const input = document.getElementById('import-config-input');
+      if (!input) return;
+      const raw = input.value.trim();
+      try {
+        const proto = raw.slice(0, raw.indexOf('://')).toUpperCase();
+        const p = proto === 'VMESS' ? 'VMESS' : proto === 'TROJAN' ? 'TROJAN' : proto === 'SS' ? 'SS' : 'VLESS';
+        let v = {}, t = 'ws';
+        if (p === 'VMESS') { const b64=raw.slice(raw.indexOf('://')+3).replace(/-/g,'+').replace(/_/g,'/'); const o=JSON.parse(decodeURIComponent(escape(atob(b64+'='.repeat((4-b64.length%4)%4))))); v={remarks:o.ps,address:o.add,port:o.port,uuid:o.id,security:o.tls?'tls':'none',sni:o.sni,host:o.host,path:o.path}; t=o.net||'ws'; }
+        else { const u=new URL(raw); v={remarks:decodeURIComponent(u.hash.slice(1)||''),address:u.hostname,port:u.port}; t=u.searchParams.get('type')||'ws'; if(p==='VLESS'){v.uuid=decodeURIComponent(u.username);v.flow=u.searchParams.get('flow')||'';} if(p==='TROJAN')v.password=decodeURIComponent(u.username); if(p==='SS'){const d=atob(u.username),i=d.indexOf(':');v.method=d.slice(0,i);v.password=d.slice(i+1);} ['security','sni','fp','host','path','serviceName','mode','headerType'].forEach(k=>v[k]=u.searchParams.get(k)||''); }
+        selectEditorProtocol(p, {...v, transport:t}); selectEditorTransport(t); renderProtocolEditor({...v, transport:t});
+      } catch (_) { alert('Valid VLESS / VMess / Trojan / SS URI ထည့်ပါ။'); }
+    }
+
+    // SERVER LOGIC
+    function setServerUpdateState(message, tone = 'normal') {
+      const status = document.getElementById('server-update-status');
+      if (!status) return;
+      status.textContent = message;
+      status.className = `text-[9px] truncate ${tone === 'error' ? 'text-rose-400' : tone === 'success' ? 'text-emerald-500' : 'text-stone-400'}`;
+    }
+
+    function manualUpdateServers(event) {
+      if (event) event.stopPropagation();
+      loadServersFromURL(true);
+    }
+
+    async function loadServersFromURL(isManualUpdate = false) {
+      const url = "https://raw.githubusercontent.com/Galaxy-Tunnel/Galaxy-Server/refs/heads/main/Servers.txt";
+      const updateButton = document.getElementById('server-update-btn');
+      const updateLabel = updateButton ? updateButton.querySelector('span') : null;
+
+      if (!isManualUpdate) {
+        updateSplashProgress(50, "ဆာဗာစာရင်း ရယူနေသည်...", "Fetching servers...");
+      }
+
+      if (isManualUpdate && updateButton) {
+        updateButton.disabled = true;
+        updateButton.classList.add('opacity-60', 'cursor-wait');
+        if (updateLabel) updateLabel.textContent = 'Updating...';
+        setServerUpdateState(uiText('Fetching latest servers from GitHub...'));
+      }
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const response = await fetch(`${url}?t=${Date.now()}`, { cache: 'no-store', signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if(!response.ok) throw new Error('Fetch failed');
+        const dataText = await response.text();
+        const lines = dataText.split('\n').filter(l => l.trim() !== '' && l.includes('://'));
+        const remoteServers = lines.map((line, idx) => {
+          const config = line.trim();
+          const nameMatch = config.match(/#(.*)$/);
+          const name = nameMatch ? decodeURIComponent(nameMatch[1]) : `Galaxy Node ${idx + 1}`;
+          return { id: 'remote-' + idx, name, description: "Galaxy Core Node", location: "Global", protocol: getProtocol(config), config, ping: 0, health: 'unknown' };
+        });
+
+        const currentConfig = servers[activeServerIndex] ? servers[activeServerIndex].config : lastSelectedConfig;
+
+        servers = [...DEFAULT_SERVERS, ...remoteServers, ...importedConfigs];
+        localStorage.setItem('galaxy_cached_servers', JSON.stringify(remoteServers));
+
+        if (currentConfig) {
+          const newIdx = servers.findIndex(s => s.config === currentConfig);
+          if (newIdx !== -1) activeServerIndex = newIdx;
+        }
+
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        setServerUpdateState(currentLanguage === 'my' ? `${remoteServers.length} ဆာဗာ ရရှိ · ${time} တွင် အပ်ဒိတ်လုပ်ပြီး` : `${remoteServers.length} servers available · Updated ${time}`, 'success');
+      } catch (err) {
+        const cached = JSON.parse(localStorage.getItem('galaxy_cached_servers') || '[]');
+        servers = [...DEFAULT_SERVERS, ...cached, ...importedConfigs];
+        setServerUpdateState(currentLanguage === 'my' ? 'လက်ရှိဆာဗာစာရင်းကို ဆက်သုံးနေသည်' : 'Keeping current server list', 'normal');
+      } finally {
+        renderServersList();
+        updateSelectedServerHUD();
+        if (isManualUpdate && updateButton) {
+          updateButton.disabled = false;
+          updateButton.classList.remove('opacity-60', 'cursor-wait');
+          if (updateLabel) updateLabel.textContent = 'Update';
+        }
+      }
+    }
+
+    function getProtocol(config) {
+        if(config.startsWith('vless://')) return 'VLESS';
+        if(config.startsWith('trojan://')) return 'Trojan';
+        if(config.startsWith('vmess://')) return 'VMESS';
+        if(config.startsWith('ss://')) return 'SS';
+        return 'V2RAY';
+    }
+
+    const NEON_PALETTES = [
+      { c1: '#22d3ee', c2: '#60a5fa', c3: '#38bdf8', shadow: 'rgba(34, 211, 238, 0.18)', text: 'text-cyan-400', badgeBg: 'bg-cyan-500/10 border-cyan-500/30' },
+      { c1: '#34d399', c2: '#2dd4bf', c3: '#10b981', shadow: 'rgba(52, 211, 153, 0.18)', text: 'text-emerald-400', badgeBg: 'bg-emerald-500/10 border-emerald-500/30' },
+      { c1: '#c084fc', c2: '#a78bfa', c3: '#8b5cf6', shadow: 'rgba(192, 132, 252, 0.18)', text: 'text-purple-400', badgeBg: 'bg-purple-500/10 border-purple-500/30' },
+      { c1: '#fbbf24', c2: '#fb923c', c3: '#f59e0b', shadow: 'rgba(251, 191, 36, 0.16)', text: 'text-amber-400', badgeBg: 'bg-amber-500/10 border-amber-500/30' },
+      { c1: '#818cf8', c2: '#60a5fa', c3: '#6366f1', shadow: 'rgba(129, 140, 248, 0.18)', text: 'text-indigo-400', badgeBg: 'bg-indigo-500/10 border-indigo-500/30' },
+      { c1: '#fb7185', c2: '#fda4af', c3: '#f43f5e', shadow: 'rgba(251, 113, 133, 0.16)', text: 'text-rose-400', badgeBg: 'bg-rose-500/10 border-rose-500/30' }
+    ];
+
+    function stablePaletteIndex(server, fallbackIndex) {
+      const seed = String(server.id || server.config || fallbackIndex);
+      let hash = 0;
+      for (let i = 0; i < seed.length; i++) hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
+      return Math.abs(hash) % NEON_PALETTES.length;
+    }
+
+    function healthPresentation(server) {
+      const status = server.health || 'unknown';
+      const styles = {
+        checking: { icon: 'fa-spinner fa-spin', label: uiText('CHECKING'), cls: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
+        online: { icon: 'fa-circle-check', label: uiText('ONLINE'), cls: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+        slow: { icon: 'fa-circle-exclamation', label: uiText('SLOW'), cls: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
+        offline: { icon: 'fa-circle-xmark', label: uiText('OFFLINE'), cls: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
+        unknown: { icon: 'fa-circle-question', label: uiText('NOT CHECKED'), cls: 'text-stone-400 bg-stone-500/10 border-stone-500/20' }
+      };
+      const item = styles[status] || styles.unknown;
+      return `<span class="health-status text-[8px] font-black px-1.5 py-0.5 rounded border ${item.cls} inline-flex items-center gap-1"><i class="fas ${item.icon}"></i>${item.label}</span>`;
+    }
+
+    function renderServersList(filtered = null) {
+      const listContainer = document.getElementById('servers-list');
+      if (!listContainer) return;
+      const data = filtered || servers;
+      listContainer.innerHTML = data.map((srv, index) => {
+        const isCurrentActive = index === activeServerIndex;
+        const palette = NEON_PALETTES[stablePaletteIndex(srv, index)];
+        return `
+          <div onclick="selectServer(${index})"
+               class="server-card-glow ${isCurrentActive ? 'active-card' : ''} cursor-pointer my-2"
+               style="--glow-c1: ${palette.c1}; --glow-c2: ${palette.c2}; --glow-c3: ${palette.c3}; --glow-shadow: ${palette.shadow};">
+            <div class="server-card-inner">
+              <div class="flex-1 min-w-0 pr-2">
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded border ${palette.badgeBg} ${palette.text} uppercase">${srv.protocol}</span>
+                  ${srv.ping > 0 ? `<span class="text-[9px] font-mono font-bold text-emerald-400">${srv.ping}ms</span>` : ''}
+                  ${healthPresentation(srv)}
+                  ${isCurrentActive ? `<span class="text-[8px] font-black uppercase text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 rounded-full flex items-center gap-1 ml-auto"><i class="fas fa-check-circle"></i> ACTIVE</span>` : ''}
+                </div>
+                <h4 class="font-extrabold text-xs text-[var(--text-primary)] truncate">${srv.name}</h4>
+              </div>
+              <button onclick="pingServer(${index}, event)" class="p-2 rounded-lg text-stone-400 hover:text-blue-400 transition-colors">
+                <i class="fas fa-bolt text-xs"></i>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function filterServers() {
+      const q = document.getElementById('server-search').value.toLowerCase();
+      const filtered = servers.filter(s => s.name.toLowerCase().includes(q) || s.protocol.toLowerCase().includes(q));
+      renderServersList(filtered);
+    }
+
+    function selectServer(index) {
+        activeServerIndex = index;
+        localStorage.setItem('galaxy_selected_config', servers[index].config);
+        renderServersList();
+        updateSelectedServerHUD();
+    }
+
+    function updateSelectedServerHUD() {
+      if(servers.length === 0) return;
+      const srv = servers[activeServerIndex];
+      const nameEl = document.getElementById('hud-server-name');
+      const descEl = document.getElementById('hud-server-desc');
+      if (nameEl) nameEl.innerText = srv.name;
+      if (descEl) descEl.innerText = `${srv.location} · ${srv.protocol}`;
+    }
+
+    async function pingServer(index, event) {
+        if(event) event.stopPropagation();
+        const srv = servers[index];
+        if (!srv) return;
+        srv.health = 'checking';
+        srv.ping = 0;
+        renderServersList();
+
+        let pingVal = 0;
+        if (typeof Android !== 'undefined' && Android.testPing) {
+          try {
+            pingVal = Number(Android.testPing(srv.config));
+          } catch (e) {
+            pingVal = -1;
+          }
+        } else {
+          // Web fallback simulated socket latency
+          await new Promise(r => setTimeout(r, 300));
+          pingVal = Math.floor(Math.random() * 80) + 35;
+        }
+
+        if (pingVal > 0) {
+          srv.ping = pingVal;
+          srv.health = pingVal > 400 ? 'slow' : 'online';
+        } else {
+          srv.health = 'offline';
+          srv.ping = 0;
+        }
+        renderServersList();
+    }
+
+    // IMPORT LOGIC
+    function setImportStatus(myText, enText, kind = 'info') {
+      const box = document.getElementById('import-status');
+      if (!box) return;
+      box.textContent = currentLanguage === 'my' ? myText : enText;
+      box.className = `rounded-xl border px-3 py-2 text-[10px] font-semibold ${kind === 'error' ? 'border-red-500/30 bg-red-500/5 text-red-500' : 'border-blue-500/30 bg-blue-500/5 text-blue-500'}`;
+      box.classList.remove('hidden');
+    }
+
+    function extractConfigUris(text) {
+      const source = String(text || '').trim();
+      let matches = source.match(/(?:vless|vmess|trojan|ss):\/\/[^\s"'<>]+/gi) || [];
+      
+      // Try decoding Base64 if no direct links found (many V2Ray subscription files are raw Base64 strings)
+      if (!matches.length && source.length > 10 && !source.includes('://')) {
+        try {
+          const cleanB64 = source.replace(/\s/g, '').replace(/-/g, '+').replace(/_/g, '/');
+          const decoded = decodeURIComponent(escape(atob(cleanB64)));
+          const decodedMatches = decoded.match(/(?:vless|vmess|trojan|ss):\/\/[^\s"'<>]+/gi);
+          if (decodedMatches && decodedMatches.length) {
+            matches = decodedMatches;
+          }
+        } catch (_) {}
+      }
+      
+      return [...new Set(matches.map(uri => uri.replace(/[),;]+$/g, '').trim()).filter(Boolean))];
+    }
+
+    function placeImportedContent(content, sourceName) {
+      const input = document.getElementById('import-config-input');
+      const uris = extractConfigUris(content);
+      if (!uris.length) {
+        setImportStatus('Config link မတွေ့ပါ။ VLESS, VMess, Trojan သို့မဟုတ် SS link ပါဝင်ကြောင်း စစ်ပါ။', 'No supported config links found. Use VLESS, VMess, Trojan, or SS links.', 'error');
+        return false;
+      }
+      input.value = uris.join('\n');
+      setImportStatus(`${sourceName} မှ link ${uris.length} ခု ရရှိပါပြီ။ စစ်ဆေးပြီး Save Config(s) ကိုနှိပ်ပါ။`, `${uris.length} link(s) loaded from ${sourceName}. Review them, then select Save Config(s).`);
+      return true;
+    }
+
+    async function importFromClipboard() {
+      try {
+        let content = '';
+        if (typeof Android !== 'undefined' && typeof Android.getClipboardContent === 'function') {
+          content = Android.getClipboardContent() || '';
+        } else if (navigator.clipboard && navigator.clipboard.readText) {
+          content = await navigator.clipboard.readText();
+        }
+        if (!content) {
+          setImportStatus('Clipboard ထဲတွင် Config link မတွေ့ပါ။ Link ကို အောက်ပါနေရာတွင် ကိုယ်တိုင်ကူးထည့်နိုင်သည်။', 'No clipboard text found. You can paste a link into the box below.', 'error');
+          document.getElementById('import-config-input').focus();
+          return;
+        }
+        placeImportedContent(content, 'Clipboard');
+      } catch (_) {
+        setImportStatus('Clipboard ဖတ်မရပါ။ အောက်ပါနေရာတွင် link ကို ကိုယ်တိုင် paste လုပ်ပါ။', 'Clipboard access was blocked. Paste the link into the box below.', 'error');
+        document.getElementById('import-config-input').focus();
+      }
+    }
+
+    function openLocalConfigPicker() {
+      const picker = document.getElementById('local-config-file');
+      if (picker) {
+        picker.value = '';
+        picker.click();
+      }
+    }
+
+    function importLocalConfigFile(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = String(reader.result || '');
+        placeImportedContent(text, file.name || 'file');
+      };
+      reader.onerror = () => setImportStatus('ဖိုင်ကို ဖတ်မရပါ။', 'Could not read the selected file.', 'error');
+      reader.readAsText(file);
+    }
+
+    let qrScanInterval = null;
+    let qrVideoStream = null;
+
+    function startQrImport() {
+      if (typeof Android !== 'undefined' && typeof Android.scanQrCode === 'function') {
+        Android.scanQrCode();
+      } else {
+        window.startQrImportModal();
+      }
+    }
+
+    window.startQrImportModal = function() {
+      const modal = document.getElementById('qr-scan-modal');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+
+      const video = document.getElementById('qr-video');
+      const placeholder = document.getElementById('qr-camera-placeholder');
+      const status = document.getElementById('qr-scan-status');
+
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } })
+          .then(stream => {
+            qrVideoStream = stream;
+            video.srcObject = stream;
+            video.setAttribute('playsinline', true);
+            video.play();
+            if (placeholder) placeholder.classList.add('hidden');
+            if (status) status.textContent = currentLanguage === 'my' ? 'QR Code ကို ကင်မရာရှေ့တွင် ချိန်ပါ သို့မဟုတ် Gallery မှ ဓာတ်ပုံရွေးပါ။' : 'Point camera at QR code, or select QR photo from gallery.';
+            
+            startCameraDecodingLoop();
+          })
+          .catch(err => {
+            if (placeholder) placeholder.classList.remove('hidden');
+            if (status) status.textContent = currentLanguage === 'my' ? 'ကင်မရာ ဖွင့်၍မရပါ သို့မဟုတ် Gallery မှ QR ဓာတ်ပုံ ရွေးချယ်ပေးပါ' : 'Camera stream unavailable. Select a QR photo from gallery.';
+          });
+      } else {
+        if (status) status.textContent = currentLanguage === 'my' ? 'Gallery မှ QR ဓာတ်ပုံ ရွေးချယ်ပေးပါ' : 'Select a QR photo from gallery.';
+      }
+    };
+
+    function startCameraDecodingLoop() {
+      if (qrScanInterval) clearInterval(qrScanInterval);
+      const video = document.getElementById('qr-video');
+      const canvas = document.getElementById('qr-canvas');
+      const ctx = canvas ? canvas.getContext('2d') : null;
+
+      qrScanInterval = setInterval(() => {
+        if (!video || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+        if (canvas && ctx) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+          if (typeof jsQR === 'function') {
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            if (code && code.data) {
+              window.onQrCodeScanned(code.data);
+              return;
+            }
+          }
+        }
+
+        if (typeof BarcodeDetector !== 'undefined') {
+          try {
+            const detector = new BarcodeDetector({ formats: ['qr_code'] });
+            detector.detect(video).then(codes => {
+              if (codes && codes.length && codes[0].rawValue) {
+                window.onQrCodeScanned(codes[0].rawValue);
+              }
+            }).catch(() => {});
+          } catch (_) {}
+        }
+      }, 300);
+    }
+
+    function scanQrFromImageFile(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.getElementById('qr-canvas') || document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0, img.width, img.height);
+          const imageData = ctx.getImageData(0, 0, img.width, img.height);
+
+          let decodedText = '';
+          if (typeof jsQR === 'function') {
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            if (code && code.data) {
+              decodedText = code.data;
+            }
+          }
+
+          if (!decodedText && typeof BarcodeDetector !== 'undefined') {
+            const detector = new BarcodeDetector({ formats: ['qr_code'] });
+            detector.detect(img).then(codes => {
+              if (codes && codes.length && codes[0].rawValue) {
+                window.onQrCodeScanned(codes[0].rawValue);
+              } else {
+                setImportStatus('ဓာတ်ပုံထဲတွင် QR code မတွေ့ပါ။', 'No QR code found in selected photo.', 'error');
+              }
+            }).catch(() => {
+              setImportStatus('ဓာတ်ပုံထဲတွင် QR code မတွေ့ပါ။', 'No QR code found in selected photo.', 'error');
+            });
+            return;
+          }
+
+          if (decodedText) {
+            window.onQrCodeScanned(decodedText);
+          } else {
+            setImportStatus('ဓာတ်ပုံထဲတွင် QR code မတွေ့ပါ။', 'No QR code found in selected photo.', 'error');
+          }
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function stopQrScanner() {
+      if (qrScanInterval) {
+        clearInterval(qrScanInterval);
+        qrScanInterval = null;
+      }
+      if (qrVideoStream) {
+        qrVideoStream.getTracks().forEach(track => track.stop());
+        qrVideoStream = null;
+      }
+      const video = document.getElementById('qr-video');
+      if (video) video.srcObject = null;
+
+      const modal = document.getElementById('qr-scan-modal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    window.onQrCodeScanned = function(content) {
+      stopQrScanner();
+      placeImportedContent(content, 'QR code');
+    };
+
+    function saveImportedConfig() {
+      const input = document.getElementById('import-config-input');
+      const configs = extractConfigUris(input.value);
+      if (!configs.length) {
+        setImportStatus('သိမ်းဆည်းနိုင်သော Config link မတွေ့ပါ။', 'No supported config links to save.', 'error');
+        return;
+      }
+      let added = 0;
+      configs.forEach(config => {
+        if (importedConfigs.some(item => item.config === config)) return;
+        const nameMatch = config.match(/#(.*)$/);
+        let name = `Imported ${importedConfigs.length + 1}`;
+        if (nameMatch && nameMatch[1]) {
+          try { name = decodeURIComponent(nameMatch[1]); } catch (_) { name = nameMatch[1]; }
+        }
+        importedConfigs.push({ id: `${Date.now()}-${added}`, name, description: 'Custom Imported Node', location: 'Custom', protocol: getProtocol(config), config, ping: 0, health: 'unknown' });
+        added++;
+      });
+      if (!added) {
+        setImportStatus('ဒီ Config link များကို ထည့်သွင်းပြီးဖြစ်သည်။', 'These config links are already imported.', 'error');
+        return;
+      }
+      localStorage.setItem('galaxy_imports', JSON.stringify(importedConfigs));
+      input.value = '';
+      setImportStatus(`${added} Config အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။`, `${added} config(s) added successfully.`);
+      renderImportedConfigsList();
+      loadServersFromURL();
+    }
+
+    function deleteImportedConfig(id) {
+      importedConfigs = importedConfigs.filter(c => String(c.id) !== String(id));
+      localStorage.setItem('galaxy_imports', JSON.stringify(importedConfigs));
+      renderImportedConfigsList();
+      loadServersFromURL();
+    }
+
+    function renderImportedConfigsList() {
+      const container = document.getElementById('imported-configs-list');
+      if (!container) return;
+      if(importedConfigs.length === 0) { container.innerHTML = '<p class="text-[10px] text-stone-400 text-center">Empty</p>'; return; }
+      container.innerHTML = importedConfigs.map(c => `
+        <div class="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl p-3 flex items-center justify-between shadow-sm">
+          <div class="flex-1 min-w-0 mr-2">
+            <h4 class="font-bold text-xs truncate">${escapeHtml(c.name)}</h4>
+            <span class="text-[8px] font-bold text-stone-400">${escapeHtml(c.protocol)}</span>
+          </div>
+          <button onclick="deleteImportedConfig('${escapeHtml(c.id)}')" class="w-8 h-8 rounded-lg bg-red-500/10 text-red-500 flex items-center justify-center"><i class="fas fa-trash-alt text-[10px]"></i></button>
+        </div>
+      `).join('');
+    }
+
+    // DNS PRESETS
+    const DNS_PRESETS = {
+      CLOUDFLARE: { remote: "https://cloudflare-dns.com/dns-query", direct: "1.1.1.1, 1.0.0.1" },
+      GOOGLE: { remote: "https://dns.google/dns-query", direct: "8.8.8.8, 8.8.4.4" },
+      QUAD9: { remote: "https://dns.quad9.net/dns-query", direct: "9.9.9.9, 149.112.112.112" },
+      ADGUARD: { remote: "https://dns.adguard.com/dns-query", direct: "94.140.14.14, 94.140.15.15" },
+      ALIDNS: { remote: "https://dns.alidns.com/dns-query", direct: "223.5.5.5, 223.6.6.6" }
+    };
+
+    function applyDnsPreset() {
+      const presetKey = document.getElementById('dns-preset-select').value;
+      if (presetKey !== 'CUSTOM' && DNS_PRESETS[presetKey]) {
+        document.getElementById('dns-input').value = DNS_PRESETS[presetKey].remote;
+        document.getElementById('direct-dns-input').value = DNS_PRESETS[presetKey].direct;
+        saveDnsSetting();
+      }
+    }
+
+    function saveDnsSetting() {
+      const remoteDns = document.getElementById('dns-input').value;
+      const directDns = document.getElementById('direct-dns-input').value;
+      if (typeof Android !== 'undefined' && Android.saveDnsSettings) {
+        Android.saveDnsSettings(remoteDns, directDns);
+      }
+    }
+
+    function loadDnsSettings() {
+      if (typeof Android !== 'undefined' && Android.getDnsSettings) {
+        try {
+          const data = JSON.parse(Android.getDnsSettings());
+          document.getElementById('dns-input').value = data.remoteDns || "https://cloudflare-dns.com/dns-query";
+          document.getElementById('direct-dns-input').value = data.directDns || "1.1.1.1, 1.0.0.1";
+        } catch (e) {}
+      }
+    }
+
+    // SPLIT TUNNEL APP SELECTOR
+    function openAppSelector() {
+        document.getElementById('app-selector-modal').classList.remove('hidden');
+        if(typeof Android !== 'undefined' && Android.getInstalledApps) {
+            allApps = JSON.parse(Android.getInstalledApps());
+            renderAppsList();
+        } else {
+            // Mock preview fallback
+            allApps = [
+              { label: "Chrome", packageName: "com.android.chrome" },
+              { label: "Telegram", packageName: "org.telegram.messenger" },
+              { label: "YouTube", packageName: "com.google.android.youtube" },
+              { label: "Facebook", packageName: "com.facebook.katana" }
+            ];
+            renderAppsList();
+        }
+    }
+    function closeAppSelector() { document.getElementById('app-selector-modal').classList.add('hidden'); }
+
+    function renderAppsList(filtered = null) {
+        const container = document.getElementById('apps-list');
+        const data = filtered || allApps;
+        container.innerHTML = data.map(app => {
+            const isChecked = selectedApps.includes(app.packageName);
+            return `
+                <div class="flex items-center gap-3 p-3 rounded-xl hover:bg-stone-50 dark:hover:bg-zinc-800 cursor-pointer" onclick="toggleAppSelection('${app.packageName}')">
+                    <div class="w-4 h-4 rounded border border-stone-300 flex items-center justify-center ${isChecked ? 'bg-blue-500 border-blue-500' : ''}">
+                        ${isChecked ? '<i class="fas fa-check text-[8px] text-white"></i>' : ''}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-xs font-bold truncate">${escapeHtml(app.label)}</div>
+                        <div class="text-[9px] text-stone-400 truncate">${escapeHtml(app.packageName)}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function toggleAppSelection(pkg) {
+        if(selectedApps.includes(pkg)) selectedApps = selectedApps.filter(p => p !== pkg);
+        else selectedApps.push(pkg);
+        renderAppsList();
+    }
+
+    function saveSelectedApps() {
+        localStorage.setItem('galaxy_selected_apps', JSON.stringify(selectedApps));
+        if(typeof Android !== 'undefined' && Android.saveAppFilter) {
+          Android.saveAppFilter(JSON.stringify(selectedApps));
+        }
+        updateSelectedAppsCount();
+        closeAppSelector();
+    }
+
+    function updateSelectedAppsCount() {
+        const el = document.getElementById('selected-apps-count');
+        if (el) el.innerText = `${selectedApps.length} apps selected`;
+    }
+
+    function filterApps() {
+        const q = document.getElementById('app-search').value.toLowerCase();
+        const filtered = allApps.filter(a => a.label.toLowerCase().includes(q) || a.packageName.toLowerCase().includes(q));
+        renderAppsList(filtered);
+    }
+
+    // CORE SETTINGS
+    let connectionMode = 'VPN';
+    let bypassMode = 'GLOBAL';
+    let enableSniffing = true;
+    let enableMux = false;
+    let domainStrategy = 'IPIfNonMatch';
+
+    function loadCoreSettings() {
+      if (typeof Android !== 'undefined' && Android.getCoreSettings) {
+        try {
+          const settings = JSON.parse(Android.getCoreSettings());
+          connectionMode = settings.connectionMode || 'VPN';
+          bypassMode = settings.bypassMode || 'GLOBAL';
+          enableSniffing = settings.enableSniffing !== undefined ? settings.enableSniffing : true;
+          enableMux = settings.enableMux !== undefined ? settings.enableMux : false;
+          domainStrategy = settings.domainStrategy || 'IPIfNonMatch';
+
+          setConnMode(connectionMode, false);
+          document.getElementById('bypass-mode-select').value = bypassMode;
+          document.getElementById('domain-strategy-select').value = domainStrategy;
+          document.getElementById('sniffing-toggle').checked = enableSniffing;
+          document.getElementById('mux-toggle').checked = enableMux;
+        } catch (e) {}
+      }
+    }
+
+    function setConnMode(mode, save = true) {
+      connectionMode = mode;
+      const vpnBtn = document.getElementById('conn-mode-vpn-btn');
+      const proxyBtn = document.getElementById('conn-mode-proxy-btn');
+      if (vpnBtn) vpnBtn.className = "py-2.5 rounded-xl border font-bold text-xs transition-all flex items-center justify-center gap-2 " + (mode === 'VPN' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-500 font-extrabold' : 'border-[var(--border-color)] opacity-70');
+      if (proxyBtn) proxyBtn.className = "py-2.5 rounded-xl border font-bold text-xs transition-all flex items-center justify-center gap-2 " + (mode === 'PROXY' ? 'border-amber-500 bg-amber-500/10 text-amber-500 font-extrabold' : 'border-[var(--border-color)] opacity-70');
+      if (save) saveAllCoreSettings();
+    }
+
+    function saveAllCoreSettings() {
+      bypassMode = document.getElementById('bypass-mode-select').value;
+      domainStrategy = document.getElementById('domain-strategy-select').value;
+      enableSniffing = document.getElementById('sniffing-toggle').checked;
+      enableMux = document.getElementById('mux-toggle').checked;
+
+      if (typeof Android !== 'undefined' && Android.saveCoreSettings) {
+        Android.saveCoreSettings(bypassMode, enableSniffing, enableMux, domainStrategy, connectionMode);
+      }
+    }
+
+    // VPN TOGGLE & NATIVE BRIDGE
+    function toggleVPN() {
+      const srv = servers[activeServerIndex];
+      if (!srv) return;
+      if (typeof Android !== 'undefined' && Android.toggleVPN) {
+        Android.toggleVPN(srv.name, srv.config);
+      } else {
+        // In-browser mock toggle for test preview
+        if (!vpnConnected) {
+          updateFromAndroid('CONNECTING', '00:00:00', '0.0 KB/s', '0.0 KB/s', srv.name);
+          setTimeout(() => {
+            updateFromAndroid('CONNECTED', '00:00:05', '124.5 KB/s', '32.1 KB/s', srv.name);
+          }, 1000);
+        } else {
+          updateFromAndroid('DISCONNECTED', '00:00:00', '0.0 KB/s', '0.0 KB/s', srv.name);
+        }
+      }
+    }
+
+    window.updateFromAndroid = function(state, dur, dl, ul, remark) {
+      const pulseRing = document.getElementById('vpn-pulse');
+      const pwrBtn = document.getElementById('vpn-power-btn');
+      const vpnIcon = document.getElementById('vpn-icon');
+      const label = document.getElementById('vpn-status-text');
+      const telemetry = document.getElementById('vpn-telemetry');
+
+      const timerEl = document.getElementById('telemetry-timer');
+      const dlEl = document.getElementById('telemetry-dl');
+      const ulEl = document.getElementById('telemetry-ul');
+
+      if (state === 'CONNECTED') {
+        if (remark && (!servers[activeServerIndex] || servers[activeServerIndex].name !== remark)) {
+            const idx = servers.findIndex(s => s.name === remark);
+            if (idx !== -1) {
+                activeServerIndex = idx;
+                updateSelectedServerHUD();
+                renderServersList();
+            }
+        }
+
+        vpnConnected = true;
+        if (label) { label.innerText = 'CONNECTED'; label.className = "text-[8px] font-black tracking-widest text-emerald-500 mt-2"; }
+        if (vpnIcon) vpnIcon.className = "fas fa-shield-alt text-2xl text-emerald-500";
+        if (pwrBtn) pwrBtn.className = "relative z-10 w-24 h-24 rounded-full bg-stone-100 dark:bg-zinc-800 border-4 border-emerald-500 bg-emerald-500/5 flex flex-col items-center justify-center transition-all";
+        if (pulseRing) pulseRing.classList.remove('hidden');
+        if (telemetry) telemetry.classList.remove('hidden');
+        if (timerEl) timerEl.innerText = dur;
+        if (dlEl) dlEl.innerText = dl;
+        if (ulEl) ulEl.innerText = ul;
+      } else if (state === 'CONNECTING') {
+        vpnConnected = true;
+        if (label) { label.innerText = 'CONNECTING...'; label.className = "text-[8px] font-black tracking-widest text-amber-500 mt-2"; }
+        if (vpnIcon) vpnIcon.className = "fas fa-sync-alt fa-spin text-2xl text-amber-500";
+        if (pwrBtn) pwrBtn.className = "relative z-10 w-24 h-24 rounded-full bg-stone-100 dark:bg-zinc-800 border-4 border-amber-500 flex flex-col items-center justify-center transition-all";
+        if (pulseRing) pulseRing.classList.add('hidden');
+        if (telemetry) telemetry.classList.add('hidden');
+      } else {
+        vpnConnected = false;
+        if (label) { label.innerText = 'OFFLINE'; label.className = "text-[8px] font-black tracking-widest text-stone-400 dark:text-stone-500 mt-2"; }
+        if (vpnIcon) vpnIcon.className = "fas fa-power-off text-2xl text-stone-400 dark:text-stone-500";
+        if (pwrBtn) pwrBtn.className = "relative z-10 w-24 h-24 rounded-full bg-stone-100 dark:bg-zinc-800 border-4 border-stone-200 dark:border-zinc-700 flex flex-col items-center justify-center transition-all";
+        if (pulseRing) pulseRing.classList.add('hidden');
+        if (telemetry) telemetry.classList.add('hidden');
+      }
+    };
+  </script>
+</body>
+</html>
